@@ -1,0 +1,13 @@
+build
+lib
+Examples/ROS/ORB_SLAM2/build
+Examples/ROS/ORB_SLAM2/Mono
+Examples/ROS/ORB_SLAM2/RGBD
+Examples/ROS/ORB_SLAM2/Stereo
+
+Examples/ROS/SMART_ORB_SLAM2/build
+Examples/ROS/SMART_ORB_SLAM2/Mono
+Examples/ROS/SMART_ORB_SLAM2/RGBD
+Examples/ROS/SMART_ORB_SLAM2/Stereo
+
+VideosExamples
