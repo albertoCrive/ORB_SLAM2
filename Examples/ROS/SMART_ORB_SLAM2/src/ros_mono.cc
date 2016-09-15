@@ -27,7 +27,6 @@
 #include<ros/ros.h>
 #include <cv_bridge/cv_bridge.h>
 
-//#include<opencv2/core/core.hpp>
 #include<opencv2/opencv.hpp>
 
 #include"../../../include/System.h"
@@ -37,13 +36,9 @@
 
 using namespace std;
 
-
-
 image_transport::Publisher imagePublisher;
-// this is unnecessary
-//ros::Publisher posePublisher;
 cv::Vec6f poseObjectToWorld;
-
+float scaleObjectToWorld;
 // TODO read this and distortion parameters from file ! ! !
 cv::Matx33f K(517.306408, 0, 318.643040, 0,  516.469215, 255.313989, 0, 0, 1);
 // TODO read this from file ! ! !
@@ -58,7 +53,6 @@ float boxVerticesData [] = {  -0.1200,    0.0950,   -0.0810,
 
 std::vector<cv::Point3f> boxVertices3d;
 
-
 std::vector <cv::Vec4i> GetVisibleSegmentsOfParallelepiped(const std::vector<cv::Point3f> & parallelepipedVertices3d, const cv::Mat &rotExpMap, const cv::Mat &tArray , const cv::Matx33f & internalCalibrationMatrix);
 
 void PoseReceived(const geometry_msgs::Pose & pose)
@@ -67,6 +61,15 @@ void PoseReceived(const geometry_msgs::Pose & pose)
     //    cout << "fico received a pose ! "<< pose.position.x<< pose.position.y << pose.position.z<<std::endl;
     //TODO merge received quaternion based pose to cv pose !
     poseObjectToWorld = cv::Vec6f(0,0,0,0,0,0);
+    // ATTENTION : in the pose received from minimalpnp, the first 3 components of the orientation are the exp map, the fourth is the estimated scale !!!
+
+    poseObjectToWorld[3] = pose.position.x;
+    poseObjectToWorld[4] = pose.position.y;
+    poseObjectToWorld[5] = pose.position.z;
+    poseObjectToWorld[0] = pose.orientation.x;
+    poseObjectToWorld[1] = pose.orientation.y;
+    poseObjectToWorld[2] = pose.orientation.z;
+    scaleObjectToWorld = pose.orientation.w;
 }
 
 class ImageGrabber
@@ -88,6 +91,7 @@ int main(int argc, char **argv)
     XInitThreads();
 
     poseObjectToWorld = cv::Vec6f(NAN,NAN,NAN,NAN,NAN,NAN);
+    scaleObjectToWorld = 1;
 
     ros::init(argc, argv, "Mono");
     ros::start();
@@ -141,8 +145,9 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
         return;
     }
     cv::Mat pose =  mpSLAM->TrackMonocular(cv_ptr->image,cv_ptr->header.stamp.toSec());
-    //TODO i canali di frameToShow sembra sia invertito!
-    cv::Mat frameToShow = cv_ptr->image.clone();
+    cv::Mat frameToShow;
+    cv::cvtColor(cv_ptr->image, frameToShow, CV_BGR2RGB);
+
     cv::Vec6f posew2c6DOF(NAN, NAN, NAN, NAN, NAN, NAN);
     if(pose.data)
     {
@@ -159,7 +164,6 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
         posew2c6DOF[0] = expMapw2c.at<float>(0,0); posew2c6DOF[1] = expMapw2c.at<float>(1,0); posew2c6DOF[2] = expMapw2c.at<float>(2,0);
         posew2c6DOF[3] = tw2c.at<float>(0,0); posew2c6DOF[4] = tw2c.at<float>(1,0); posew2c6DOF[5] = tw2c.at<double>(2,0);
 
-
         vector<cv::Point3f> points3d(4, cv::Point3f(0,0,1));
         points3d[1].x += 0.1;
         points3d[2].y += 0.1;
@@ -175,7 +179,7 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
         if(std::isfinite(poseObjectToWorld[0]) && cv::norm(poseObjectToWorld) < 1e3)
         {
             cv::Mat rotObj2WorldExp(cv::Size(1,3),CV_32F);
-            rotObj2WorldExp.at<float>(0,0) = poseObjectToWorld[0];         rotObj2WorldExp.at<float>(1,0) = poseObjectToWorld[1];         rotObj2WorldExp.at<float>(2,0) = poseObjectToWorld[2];
+            rotObj2WorldExp.at<float>(0,0) = poseObjectToWorld[0]; rotObj2WorldExp.at<float>(1,0) = poseObjectToWorld[1]; rotObj2WorldExp.at<float>(2,0) = poseObjectToWorld[2];
             cv::Mat rotObj2World;
             cv::Rodrigues(rotObj2WorldExp, rotObj2World);
             cv::Point3f tObj2World(poseObjectToWorld[3],poseObjectToWorld[4], poseObjectToWorld[5]);
@@ -186,14 +190,18 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
             // for(size_t iPoint(0); iPoint < boxVertices3dInWorld.size();++iPoint)
             //     boxVertices3dInWorld[iPoint] = boxVertices3dInWorld[iPoint] + tObj2World;
 
-
             std::vector<cv::Point3f> boxVertices3dInWorld(boxVertices3d.size());
             for(size_t iPoint(0); iPoint < boxVertices3d.size();++iPoint)
             {
-                cv::Mat temp  = rotObj2World* cv::Mat(boxVertices3d[iPoint]);
+                cv::Mat temp  = rotObj2World* cv::Mat(scaleObjectToWorld*boxVertices3d[iPoint]);
                 boxVertices3dInWorld[iPoint]= cv::Point3f(temp.at<float>(0,0), temp.at<float>(1,0), temp.at<float>(2,0)) + tObj2World;
+                boxVertices3dInWorld[iPoint].z += 1;
+                std::cout << iPoint << " watch out i put random scale and translation of z 1 !!!   -> " << boxVertices3dInWorld[iPoint]<<std::endl;
             }
-
+            ///////
+        std::cout << expMapw2c<<std::endl<< tw2c<<std::endl;
+        std::cout << std::endl<< std::endl<< std::endl;
+        /// ////////////////
             std::vector <cv::Vec4i> boxSegments = GetVisibleSegmentsOfParallelepiped(boxVertices3dInWorld, expMapw2c, tw2c, K);
 
             for(size_t iSeg(0); iSeg < boxSegments.size();++iSeg)
@@ -238,12 +246,14 @@ std::vector <cv::Vec4i> GetVisibleSegmentsOfParallelepiped(const std::vector<cv:
     //      %convention: for each rectangle, start from the TOP LEFT corner and
     //      %continue in clockwise way
 
-    vector<cv::Point3f> points3d(4, cv::Point3f(0,0,1));
-    points3d[1].x += 0.1;
-    points3d[2].y += 0.1;
-    points3d[3].z += 0.1;
+//    vector<cv::Point3f> points3d(4, cv::Point3f(0,0,1));
+//    points3d[1].x += 0.1;
+//    points3d[2].y += 0.1;
+//    points3d[3].z += 0.1;
+//    vector<cv::Point2f> pixels;
+//    cv::projectPoints(points3d, rotExpMap, tArray, cv::Mat(internalCalibrationMatrix), cv::Mat::zeros(cv::Size(1,4), CV_32F), pixels);
     vector<cv::Point2f> pixels;
-    cv::projectPoints(points3d, rotExpMap, tArray, cv::Mat(internalCalibrationMatrix), cv::Mat::zeros(cv::Size(1,4), CV_32F), pixels);
+    cv::projectPoints(parallelepipedVertices3d, rotExpMap, tArray, cv::Mat(internalCalibrationMatrix), cv::Mat::zeros(cv::Size(1,4), CV_32F), pixels);
 
     vector < cv::Vec4i > segments;
     segments.reserve(9);
