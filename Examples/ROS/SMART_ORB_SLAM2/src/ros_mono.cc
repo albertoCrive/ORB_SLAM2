@@ -38,9 +38,9 @@ using namespace std;
 
 image_transport::Publisher imagePublisher;
 cv::Vec6f poseObjectToWorld;
-float scaleObjectToWorld;
+double scaleObjectToWorld;
 // TODO read this and distortion parameters from file ! ! !
-cv::Matx33f K(517.306408, 0, 318.643040, 0,  516.469215, 255.313989, 0, 0, 1);
+cv::Matx33f K(0,0,0,0,0,0,0,0,0);
 // TODO read this from file ! ! !
 float boxVerticesData [] = {  -0.1200,    0.0950,   -0.0810,
                               0.1200,    0.0950,   -0.0810,
@@ -51,16 +51,33 @@ float boxVerticesData [] = {  -0.1200,    0.0950,   -0.0810,
                               0.1200,   -0.0950,         0,
                               -0.1200,   -0.0950,         0};
 
-std::vector<cv::Point3f> boxVertices3d;
+cv::Mat boxVertices3d;
 
 std::vector <cv::Vec4i> GetVisibleSegmentsOfParallelepiped(const std::vector<cv::Point3f> & parallelepipedVertices3d, const cv::Mat &rotExpMap, const cv::Mat &tArray , const cv::Matx33f & internalCalibrationMatrix);
+
+
+// TODO this is duplicated from PoseEstiamtor!
+void ReadIntrinsicFromOpencvFile(const std::string & fileName, cv::Matx33f * internalCalibrationMatrix, cv::Mat * distortionParameters)
+{
+    cv::FileStorage fs(fileName, cv::FileStorage::READ);
+    cv::Mat temp;
+    fs["camera_matrix"] >> temp;
+    if (temp.type() != CV_64F)
+        throw std::runtime_error("could not read internal parameters matrix! aborting...");
+    for (int i(0); i < 3; ++i) {
+        for (int j(0); j < 3; ++j)
+            (*internalCalibrationMatrix) (i, j) = temp.at < double >(i, j);
+    }
+    fs["distortion_coefficients"] >> (*distortionParameters);
+    fs.release();
+}
 
 void PoseReceived(const geometry_msgs::Pose & pose)
 {
     ROS_INFO_STREAM("fico received a pose ! "<< pose.position.x<< pose.position.y << pose.position.z);
-    //    cout << "fico received a pose ! "<< pose.position.x<< pose.position.y << pose.position.z<<std::endl;
-    //TODO merge received quaternion based pose to cv pose !
-    poseObjectToWorld = cv::Vec6f(0,0,0,0,0,0);
+    cout << "fico received a pose ! "<< pose.position.x<< " " << pose.position.y << " " <<  pose.position.z<< " " << pose.orientation.x<< " " <<
+pose.orientation.y<< " " << pose.orientation.z<< " " << pose.orientation.w<< " " 	 << std::endl;
+    //poseObjectToWorld = cv::Vec6f(0,0,0,0,0,0);
     // ATTENTION : in the pose received from minimalpnp, the first 3 components of the orientation are the exp map, the fourth is the estimated scale !!!
 
     poseObjectToWorld[3] = pose.position.x;
@@ -85,10 +102,24 @@ public:
 
 int main(int argc, char **argv)
 {
-    for(size_t i(0); i < 8;++i)
-        boxVertices3d.push_back(cv::Point3f(boxVerticesData[3*i],boxVerticesData[3*i+1],boxVerticesData[3*i+2]));
-
     XInitThreads();
+
+    boxVertices3d = cv::Mat::zeros(3, 8, CV_64FC1);
+    for(size_t iPoint(0); iPoint < 8; ++iPoint)
+    {
+        for(size_t iDim(0); iDim < 3; ++iDim)
+            boxVertices3d.at<double>(iDim, iPoint) = boxVerticesData[3*iPoint + iDim];
+    }
+//        boxVertices3d.push_back(cv::Point3f(boxVerticesData[3*i],boxVerticesData[3*i+1],boxVerticesData[3*i+2]));
+
+
+
+    std::string intrinsicsXmlFile = "./Data/calib/LogitechPro9000.xml";
+    cv::Mat distortionParam;
+    ReadIntrinsicFromOpencvFile(intrinsicsXmlFile, &K, &distortionParam);
+//    cv::initUndistortRectifyMap(internalCalibrationMatrix, distortionParam, cv::Mat(), internalCalibrationMatrix, cv::Size(640, 480), CV_32FC1, undistortMapx, undistortMapy);
+    if(K(0,2) > 500 || K(0,2) < 10)
+        throw std::runtime_error("The intrinsic matrix is likely to not be VGA!! ! Aborting.");
 
     poseObjectToWorld = cv::Vec6f(NAN,NAN,NAN,NAN,NAN,NAN);
     scaleObjectToWorld = 1;
@@ -162,7 +193,7 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
         if(tw2c.type()!= CV_32FC1 || tw2c.cols !=1 || tw2c.rows != 3)
             throw std::runtime_error(" damn! t array has wrong type");
         posew2c6DOF[0] = expMapw2c.at<float>(0,0); posew2c6DOF[1] = expMapw2c.at<float>(1,0); posew2c6DOF[2] = expMapw2c.at<float>(2,0);
-        posew2c6DOF[3] = tw2c.at<float>(0,0); posew2c6DOF[4] = tw2c.at<float>(1,0); posew2c6DOF[5] = tw2c.at<double>(2,0);
+        posew2c6DOF[3] = tw2c.at<float>(0,0); posew2c6DOF[4] = tw2c.at<float>(1,0); posew2c6DOF[5] = tw2c.at<float>(2,0);
 
         vector<cv::Point3f> points3d(4, cv::Point3f(0,0,1));
         points3d[1].x += 0.1;
@@ -171,37 +202,57 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
         vector<cv::Point2f> pixels;
         cv::projectPoints(points3d, expMapw2c, tw2c, cv::Mat(K), cv::Mat::zeros(cv::Size(1,4), CV_32F), pixels);
         cv::circle(frameToShow, pixels[0], 5, cv::Scalar(255,255,255), -2);
-        cv::circle(frameToShow, pixels[1], 5, cv::Scalar(255,0,0), -2);
+        cv::circle(frameToShow, pixels[1], 9, cv::Scalar(255,0,0), -2);
         cv::circle(frameToShow, pixels[2], 5, cv::Scalar(0,255,0), -2);
         cv::circle(frameToShow, pixels[3], 5, cv::Scalar(0,0,255), -2);
 
         // draw box on image
         if(std::isfinite(poseObjectToWorld[0]) && cv::norm(poseObjectToWorld) < 1e3)
         {
-            cv::Mat rotObj2WorldExp(cv::Size(1,3),CV_32F);
-            rotObj2WorldExp.at<float>(0,0) = poseObjectToWorld[0]; rotObj2WorldExp.at<float>(1,0) = poseObjectToWorld[1]; rotObj2WorldExp.at<float>(2,0) = poseObjectToWorld[2];
+            cv::Mat rotObj2WorldExp(cv::Size(1,3),CV_64F);
+            rotObj2WorldExp.at<double>(0,0) = poseObjectToWorld[0]; rotObj2WorldExp.at<double>(1,0) = poseObjectToWorld[1]; rotObj2WorldExp.at<double>(2,0) = poseObjectToWorld[2];
             cv::Mat rotObj2World;
             cv::Rodrigues(rotObj2WorldExp, rotObj2World);
-            cv::Point3f tObj2World(poseObjectToWorld[3],poseObjectToWorld[4], poseObjectToWorld[5]);
+            cv::Mat tObj2World(cv::Size(1,3),CV_64F);
+            tObj2World.at<double>(0,0) = poseObjectToWorld[3]; tObj2World.at<double>(1,0) = poseObjectToWorld[4]; tObj2World.at<double>(2,0) = poseObjectToWorld[5];
 
+            //            cv::Point3f tObj2World(poseObjectToWorld[3],poseObjectToWorld[4], poseObjectToWorld[5]);
 //            std::vector<cv::Point3f> boxVertices3dInWorld;
             // cv::Mat temp = rotObj2World* cv::Mat(boxVertices3d,false);
             // temp.copyTo(cv::Mat(boxVertices3dInWorld, false));
             // for(size_t iPoint(0); iPoint < boxVertices3dInWorld.size();++iPoint)
             //     boxVertices3dInWorld[iPoint] = boxVertices3dInWorld[iPoint] + tObj2World;
 
-            std::vector<cv::Point3f> boxVertices3dInWorld(boxVertices3d.size());
-            for(size_t iPoint(0); iPoint < boxVertices3d.size();++iPoint)
+
+
+
+            const int nPoints = boxVertices3d.cols;
+            cv::Mat pp3dInWorld = scaleObjectToWorld * rotObj2World * boxVertices3d + cv::repeat(tObj2World, 1, nPoints);
+
+            // TODO remove this useless conversion
+            std::vector<cv::Point3f> boxVertices3dInWorld(nPoints);
+            for(size_t iPoint(0); iPoint < nPoints;++iPoint)
             {
-                cv::Mat temp  = rotObj2World* cv::Mat(scaleObjectToWorld*boxVertices3d[iPoint]);
-                boxVertices3dInWorld[iPoint]= cv::Point3f(temp.at<float>(0,0), temp.at<float>(1,0), temp.at<float>(2,0)) + tObj2World;
-                boxVertices3dInWorld[iPoint].z += 1;
-                std::cout << iPoint << " watch out i put random scale and translation of z 1 !!!   -> " << boxVertices3dInWorld[iPoint]<<std::endl;
+                boxVertices3dInWorld[iPoint].x = (float)pp3dInWorld.at<double>(0, iPoint);
+                boxVertices3dInWorld[iPoint].y = (float)pp3dInWorld.at<double>(1, iPoint);
+                boxVertices3dInWorld[iPoint].z = (float)pp3dInWorld.at<double>(2, iPoint);
             }
+            // versione di prima
+//            std::vector<cv::Point3f> boxVertices3dInWorld(boxVertices3d.size());
+//            for(size_t iPoint(0); iPoint < boxVertices3d.size();++iPoint)
+//            {
+//                cv::Mat temp  = rotObj2World* cv::Mat(scaleObjectToWorld*boxVertices3d[iPoint]);
+//                boxVertices3dInWorld[iPoint]= cv::Point3f(temp.at<float>(0,0), temp.at<float>(1,0), temp.at<float>(2,0)) + tObj2World;
+//                //boxVertices3dInWorld[iPoint].z += 1;
+//                //std::cout << iPoint << " watch out i put random scale and translation of z 1 !!!   -> " << boxVertices3dInWorld[iPoint]<<std::endl;
+//            }
             ///////
-        std::cout << expMapw2c<<std::endl<< tw2c<<std::endl;
-        std::cout << std::endl<< std::endl<< std::endl;
-        /// ////////////////
+        // std::cout << expMapw2c<<std::endl<< tw2c<<std::endl;
+        // std::cout << std::endl<< std::endl<< std::endl;
+
+            std::cout << " POINTS IN WORLD :::::::::::::"<<std::endl<< pp3dInWorld<<std::endl<<std::endl;
+
+
             std::vector <cv::Vec4i> boxSegments = GetVisibleSegmentsOfParallelepiped(boxVertices3dInWorld, expMapw2c, tw2c, K);
 
             for(size_t iSeg(0); iSeg < boxSegments.size();++iSeg)
@@ -212,12 +263,13 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
 
     // dirty workaround : we publish pose as a string in the image message header
     stringstream ss;
-    ss << setprecision(5) << posew2c6DOF[0] << " "  << posew2c6DOF[1] << " " << posew2c6DOF[2] << " " << posew2c6DOF[3] << " " << posew2c6DOF[4] << " " << posew2c6DOF[5];
+    ss << setprecision(5) << posew2c6DOF[0] << " "  << posew2c6DOF[1] << " " << posew2c6DOF[2] << " " << posew2c6DOF[3] << " " << posew2c6DOF[4] << " " << posew2c6DOF[5]<< " \n" ;
 
     // cv_bridge::CvImage cvImageBridge(std_msgs::Header(msg->header), "rgb8", cv_ptr->image);
     // cvImageBridge.header.frame_id = ss.str();
     // cvImageBridge.toImageMsg(rosImageMessage);
-
+    // std::cout << "sending the pose : " <<  ss.str() <<std::endl;
+    
     sensor_msgs::Image rosImageMessage = (*msg);
     rosImageMessage.header.frame_id = ss.str();
     imagePublisher.publish(rosImageMessage);
@@ -281,7 +333,7 @@ std::vector <cv::Vec4i> GetVisibleSegmentsOfParallelepiped(const std::vector<cv:
     //    RotationMatrix R(&pose[0], exponentialMap);
     //    Point3f tArray(pose(3), pose(4), pose(5));
     //    Point3f position = -(R.GetRotationMatrix().inv()) * tArray;
-    std::cout << " 3456 I try to draw the box ! "<<rotExpMap.cols << " " << rotExpMap.rows << rotExpMap.type() << std::endl;
+    //    std::cout << " 3456 I try to draw the box ! "<<rotExpMap.cols << " " << rotExpMap.rows << rotExpMap.type() << std::endl;
 
     cv::Mat rotMatrix; cv::Rodrigues(rotExpMap, rotMatrix);
     if(rotMatrix.type()!= CV_32FC1 || rotMatrix.cols != 3 || rotMatrix.rows != 3)
