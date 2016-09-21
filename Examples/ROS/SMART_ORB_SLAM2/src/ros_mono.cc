@@ -254,9 +254,9 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
 
 
             std::vector <cv::Vec4i> boxSegments = GetVisibleSegmentsOfParallelepiped(boxVertices3dInWorld, expMapw2c, tw2c, K);
-
+			int thickness = 4;
             for(size_t iSeg(0); iSeg < boxSegments.size();++iSeg)
-                cv::line(frameToShow, cv::Point(boxSegments[iSeg][0],boxSegments[iSeg][1]), cv::Point(boxSegments[iSeg][2],boxSegments[iSeg][3]), cv::Scalar(0,255,0));
+                cv::line(frameToShow, cv::Point(boxSegments[iSeg][0],boxSegments[iSeg][1]), cv::Point(boxSegments[iSeg][2],boxSegments[iSeg][3]), cv::Scalar(0,255,0) thickness);
         }
 
     }
