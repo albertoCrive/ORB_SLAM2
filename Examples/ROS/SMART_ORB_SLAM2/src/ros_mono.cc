@@ -26,6 +26,8 @@
 
 #include<ros/ros.h>
 #include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
+
 
 #include<opencv2/opencv.hpp>
 
@@ -36,9 +38,11 @@
 
 using namespace std;
 
-image_transport::Publisher imagePublisher;
+image_transport::Publisher imagePublisherToPoseEstimator;
+image_transport::Publisher imagePublisherToVisu;
 cv::Vec6f poseObjectToWorld;
 double scaleObjectToWorld;
+
 // TODO read this and distortion parameters from file ! ! !
 cv::Matx33f K(0,0,0,0,0,0,0,0,0);
 // TODO read this from file ! ! !
@@ -74,9 +78,9 @@ void ReadIntrinsicFromOpencvFile(const std::string & fileName, cv::Matx33f * int
 
 void PoseReceived(const geometry_msgs::Pose & pose)
 {
-    ROS_INFO_STREAM("fico received a pose ! "<< pose.position.x<< pose.position.y << pose.position.z);
-    cout << "fico received a pose ! "<< pose.position.x<< " " << pose.position.y << " " <<  pose.position.z<< " " << pose.orientation.x<< " " <<
-pose.orientation.y<< " " << pose.orientation.z<< " " << pose.orientation.w<< " " 	 << std::endl;
+    //    ROS_INFO_STREAM("fico received a pose ! "<< pose.position.x<< pose.position.y << pose.position.z);
+    //    cout << "fico received a pose ! "<< pose.position.x<< " " << pose.position.y << " " <<  pose.position.z<< " " << pose.orientation.x<< " " <<
+    //            pose.orientation.y<< " " << pose.orientation.z<< " " << pose.orientation.w<< " " 	 << std::endl;
     //poseObjectToWorld = cv::Vec6f(0,0,0,0,0,0);
     // ATTENTION : in the pose received from minimalpnp, the first 3 components of the orientation are the exp map, the fourth is the estimated scale !!!
 
@@ -99,7 +103,6 @@ public:
     ORB_SLAM2::System* mpSLAM;
 };
 
-
 int main(int argc, char **argv)
 {
     XInitThreads();
@@ -110,14 +113,11 @@ int main(int argc, char **argv)
         for(size_t iDim(0); iDim < 3; ++iDim)
             boxVertices3d.at<double>(iDim, iPoint) = boxVerticesData[3*iPoint + iDim];
     }
-//        boxVertices3d.push_back(cv::Point3f(boxVerticesData[3*i],boxVerticesData[3*i+1],boxVerticesData[3*i+2]));
-
-
 
     std::string intrinsicsXmlFile = "./Data/calib/LogitechPro9000.xml";
     cv::Mat distortionParam;
     ReadIntrinsicFromOpencvFile(intrinsicsXmlFile, &K, &distortionParam);
-//    cv::initUndistortRectifyMap(internalCalibrationMatrix, distortionParam, cv::Mat(), internalCalibrationMatrix, cv::Size(640, 480), CV_32FC1, undistortMapx, undistortMapy);
+    //    cv::initUndistortRectifyMap(internalCalibrationMatrix, distortionParam, cv::Mat(), internalCalibrationMatrix, cv::Size(640, 480), CV_32FC1, undistortMapx, undistortMapy);
     if(K(0,2) > 500 || K(0,2) < 10)
         throw std::runtime_error("The intrinsic matrix is likely to not be VGA!! ! Aborting.");
 
@@ -144,19 +144,23 @@ int main(int argc, char **argv)
     ros::Subscriber sub2 = nodeHandler.subscribe("/minimalpnp/relativePose", 1000, &PoseReceived); //1000 is the max lenght of the message queue
 
     image_transport::ImageTransport imageTransport(nodeHandler);
+    image_transport::ImageTransport imageTransportForVisu(nodeHandler);
+    
     //image_transport::Subscriber sub = it.subscribe("/ORB_SLAM2/in_image_base_topic", 1, imageCallback);
-    imagePublisher = imageTransport.advertise("/ORB_SLAM2/trackedImage", 1);
+    imagePublisherToPoseEstimator = imageTransport.advertise("/SMART_ORB_SLAM2/trackedImage", 1);
+    imagePublisherToVisu = imageTransportForVisu.advertise("/SMART_ORB_SLAM2/trackedImageWithBox", 1);
+    
     //    posePublisher = nodeHandler.advertise<geometry_msgs::PoseStamped>("/ORB_SLAM2/SLAMPose", 1); //1000 is the max lenght of the message queue
     /// /////////////////////////////////
-    cv::namedWindow("finestraMia!");
-    cv::startWindowThread();
+    //  cv::namedWindow("finestraMia!");
+    //    cv::startWindowThread();
     ros::spin();
 
     // Stop all threads
     SLAM.Shutdown();
     // Save camera trajectory
     SLAM.SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
-    cv::destroyWindow("finestraMia!");
+    //    cv::destroyWindow("finestraMia!");
 
     ros::shutdown();
     return 0;
@@ -217,7 +221,7 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
             tObj2World.at<double>(0,0) = poseObjectToWorld[3]; tObj2World.at<double>(1,0) = poseObjectToWorld[4]; tObj2World.at<double>(2,0) = poseObjectToWorld[5];
 
             //            cv::Point3f tObj2World(poseObjectToWorld[3],poseObjectToWorld[4], poseObjectToWorld[5]);
-//            std::vector<cv::Point3f> boxVertices3dInWorld;
+            //            std::vector<cv::Point3f> boxVertices3dInWorld;
             // cv::Mat temp = rotObj2World* cv::Mat(boxVertices3d,false);
             // temp.copyTo(cv::Mat(boxVertices3dInWorld, false));
             // for(size_t iPoint(0); iPoint < boxVertices3dInWorld.size();++iPoint)
@@ -231,48 +235,46 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
 
             // TODO remove this useless conversion
             std::vector<cv::Point3f> boxVertices3dInWorld(nPoints);
-            for(size_t iPoint(0); iPoint < nPoints;++iPoint)
+            for(size_t iPoint(0); iPoint < (size_t)nPoints;++iPoint)
             {
                 boxVertices3dInWorld[iPoint].x = (float)pp3dInWorld.at<double>(0, iPoint);
                 boxVertices3dInWorld[iPoint].y = (float)pp3dInWorld.at<double>(1, iPoint);
                 boxVertices3dInWorld[iPoint].z = (float)pp3dInWorld.at<double>(2, iPoint);
             }
-            // versione di prima
-//            std::vector<cv::Point3f> boxVertices3dInWorld(boxVertices3d.size());
-//            for(size_t iPoint(0); iPoint < boxVertices3d.size();++iPoint)
-//            {
-//                cv::Mat temp  = rotObj2World* cv::Mat(scaleObjectToWorld*boxVertices3d[iPoint]);
-//                boxVertices3dInWorld[iPoint]= cv::Point3f(temp.at<float>(0,0), temp.at<float>(1,0), temp.at<float>(2,0)) + tObj2World;
-//                //boxVertices3dInWorld[iPoint].z += 1;
-//                //std::cout << iPoint << " watch out i put random scale and translation of z 1 !!!   -> " << boxVertices3dInWorld[iPoint]<<std::endl;
-//            }
-            ///////
-        // std::cout << expMapw2c<<std::endl<< tw2c<<std::endl;
-        // std::cout << std::endl<< std::endl<< std::endl;
-
-            std::cout << " POINTS IN WORLD :::::::::::::"<<std::endl<< pp3dInWorld<<std::endl<<std::endl;
-
 
             std::vector <cv::Vec4i> boxSegments = GetVisibleSegmentsOfParallelepiped(boxVertices3dInWorld, expMapw2c, tw2c, K);
-			int thickness = 4;
+            int thickness = 4;
             for(size_t iSeg(0); iSeg < boxSegments.size();++iSeg)
-                cv::line(frameToShow, cv::Point(boxSegments[iSeg][0],boxSegments[iSeg][1]), cv::Point(boxSegments[iSeg][2],boxSegments[iSeg][3]), cv::Scalar(0,255,0) thickness);
+                cv::line(frameToShow, cv::Point(boxSegments[iSeg][0],boxSegments[iSeg][1]), cv::Point(boxSegments[iSeg][2],boxSegments[iSeg][3]), cv::Scalar(0,255,0), thickness);
         }
 
+
+
+        // dirty workaround : we publish pose as a string in the image message header
+        stringstream ss;
+        ss << setprecision(5) << posew2c6DOF[0] << " "  << posew2c6DOF[1] << " " << posew2c6DOF[2] << " " << posew2c6DOF[3] << " " << posew2c6DOF[4] << " " << posew2c6DOF[5]<< " \n" ;
+        sensor_msgs::Image rosImageMessage = (*msg);
+        rosImageMessage.header.frame_id = ss.str();
+        imagePublisherToPoseEstimator.publish(rosImageMessage);
+
+    }
+    else
+        cv::putText(frameToShow, "ORB-SLAM Tracking lost :(", cv::Point(20,400), cv::FONT_HERSHEY_DUPLEX, 1, cv::Scalar(0,0,255));
+
+    cv_bridge::CvImage out_msg;
+    try
+    {
+        out_msg.header   = msg->header; // Same timestamp and tf frame as input image
+        out_msg.encoding = sensor_msgs::image_encodings::BGR8; // Or whatever
+        out_msg.image    = frameToShow;
+    }
+    catch (cv_bridge::Exception& e)
+    {
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+        return;
     }
 
-    // dirty workaround : we publish pose as a string in the image message header
-    stringstream ss;
-    ss << setprecision(5) << posew2c6DOF[0] << " "  << posew2c6DOF[1] << " " << posew2c6DOF[2] << " " << posew2c6DOF[3] << " " << posew2c6DOF[4] << " " << posew2c6DOF[5]<< " \n" ;
-
-    // cv_bridge::CvImage cvImageBridge(std_msgs::Header(msg->header), "rgb8", cv_ptr->image);
-    // cvImageBridge.header.frame_id = ss.str();
-    // cvImageBridge.toImageMsg(rosImageMessage);
-    // std::cout << "sending the pose : " <<  ss.str() <<std::endl;
-    
-    sensor_msgs::Image rosImageMessage = (*msg);
-    rosImageMessage.header.frame_id = ss.str();
-    imagePublisher.publish(rosImageMessage);
+    imagePublisherToVisu.publish(out_msg.toImageMsg());
 
     // geometry_msgs::PoseStamped SLAMPose;
     //     SLAMPose.header = msg->header;
@@ -286,9 +288,6 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
     // //     35       pub.publish(msg);
     // //    imagePublisher.publish(msg);
 
-
-    cv::imshow("finestraMia!", frameToShow);
-    cv::waitKey(3);
 }
 
 //// TODO these functions are modified from originals present in minimalpnp. Fusion them!
@@ -297,13 +296,6 @@ std::vector <cv::Vec4i> GetVisibleSegmentsOfParallelepiped(const std::vector<cv:
     //     parallelepipedVertices3d : %convention: first frontal rectangle, then back rectangle
     //      %convention: for each rectangle, start from the TOP LEFT corner and
     //      %continue in clockwise way
-
-//    vector<cv::Point3f> points3d(4, cv::Point3f(0,0,1));
-//    points3d[1].x += 0.1;
-//    points3d[2].y += 0.1;
-//    points3d[3].z += 0.1;
-//    vector<cv::Point2f> pixels;
-//    cv::projectPoints(points3d, rotExpMap, tArray, cv::Mat(internalCalibrationMatrix), cv::Mat::zeros(cv::Size(1,4), CV_32F), pixels);
     vector<cv::Point2f> pixels;
     cv::projectPoints(parallelepipedVertices3d, rotExpMap, tArray, cv::Mat(internalCalibrationMatrix), cv::Mat::zeros(cv::Size(1,4), CV_32F), pixels);
 
@@ -339,32 +331,41 @@ std::vector <cv::Vec4i> GetVisibleSegmentsOfParallelepiped(const std::vector<cv:
     if(rotMatrix.type()!= CV_32FC1 || rotMatrix.cols != 3 || rotMatrix.rows != 3)
         throw std::runtime_error(" damn! rot mat has wrong type" + std::to_string(rotMatrix.type()) + " " + std::to_string(rotMatrix.cols) + " " + std::to_string(rotMatrix.rows));
 
-    //    cv::Mat p3d =cv::Mat::zeros(cv::Size(1,3), CV_32F);
-    cv::Mat position = -rotMatrix.inv() * tArray;
+// TODO : temporary solution for showing the box.
+    segments.push_back(cv::Vec4i(pixels[4].x, pixels[4].y, pixels[7].x, pixels[7].y));
+    segments.push_back(cv::Vec4i(pixels[5].x, pixels[5].y, pixels[6].x, pixels[6].y));
+    segments.push_back(cv::Vec4i(pixels[6].x, pixels[6].y, pixels[7].x, pixels[7].y));
+    segments.push_back(cv::Vec4i(pixels[4].x, pixels[4].y, pixels[5].x, pixels[5].y));
+    segments.push_back(cv::Vec4i(pixels[0].x, pixels[0].y, pixels[4].x, pixels[4].y));
+    segments.push_back(cv::Vec4i(pixels[1].x, pixels[1].y, pixels[5].x, pixels[5].y));
+    segments.push_back(cv::Vec4i(pixels[2].x, pixels[2].y, pixels[6].x, pixels[6].y));
+    segments.push_back(cv::Vec4i(pixels[3].x, pixels[3].y, pixels[7].x, pixels[7].y));
+    //////////////// this does not work !!!!!!!
+//    cv::Mat position = -rotMatrix.inv() * tArray;
+    //    std::cout << position << std::endl <<minx << " " <<maxx << " "<<miny << " "<<maxy << " " <<std::endl;
+    //    vector < bool > addedSide(4, false);
+    //    if (position.at<float>(0,0) < minx) {
+    //        segments.push_back(cv::Vec4i(pixels[4].x, pixels[4].y, pixels[7].x, pixels[7].y));
+    //        addedSide[0] = true;
+    //    } else if (position.at<float>(0,0) > maxx) {
+    //        segments.push_back(cv::Vec4i(pixels[5].x, pixels[5].y, pixels[6].x, pixels[6].y));
+    //        addedSide[2] = true;
+    //    }
+    //    if (position.at<float>(1,0) < miny) {
+    //        segments.push_back(cv::Vec4i(pixels[6].x, pixels[6].y, pixels[7].x, pixels[7].y));
+    //        addedSide[3] = true;
+    //    } else if (position.at<float>(1,0) > maxy) {
+    //        segments.push_back(cv::Vec4i(pixels[4].x, pixels[4].y, pixels[5].x, pixels[5].y));
+    //        addedSide[1] = true;
+    //    }
 
-    vector < bool > addedSide(4, false);
-    if (position.at<float>(0,0) < minx) {
-        segments.push_back(cv::Vec4i(pixels[4].x, pixels[4].y, pixels[7].x, pixels[7].y));
-        addedSide[0] = true;
-    } else if (position.at<float>(0,0) > maxx) {
-        segments.push_back(cv::Vec4i(pixels[5].x, pixels[5].y, pixels[6].x, pixels[6].y));
-        addedSide[2] = true;
-    }
-    if (position.at<float>(1,0) < miny) {
-        segments.push_back(cv::Vec4i(pixels[6].x, pixels[6].y, pixels[7].x, pixels[7].y));
-        addedSide[3] = true;
-    } else if (position.at<float>(1,0) > maxy) {
-        segments.push_back(cv::Vec4i(pixels[4].x, pixels[4].y, pixels[5].x, pixels[5].y));
-        addedSide[1] = true;
-    }
-
-    if (addedSide[0] || addedSide[1])
-        segments.push_back(cv::Vec4i(pixels[0].x, pixels[0].y, pixels[4].x, pixels[4].y));
-    if (addedSide[1] || addedSide[2])
-        segments.push_back(cv::Vec4i(pixels[1].x, pixels[1].y, pixels[5].x, pixels[5].y));
-    if (addedSide[2] || addedSide[3])
-        segments.push_back(cv::Vec4i(pixels[2].x, pixels[2].y, pixels[6].x, pixels[6].y));
-    if (addedSide[3] || addedSide[0])
-        segments.push_back(cv::Vec4i(pixels[3].x, pixels[3].y, pixels[7].x, pixels[7].y));
+    //    if (addedSide[0] || addedSide[1])
+    //        segments.push_back(cv::Vec4i(pixels[0].x, pixels[0].y, pixels[4].x, pixels[4].y));
+    //    if (addedSide[1] || addedSide[2])
+    //        segments.push_back(cv::Vec4i(pixels[1].x, pixels[1].y, pixels[5].x, pixels[5].y));
+    //    if (addedSide[2] || addedSide[3])
+    //        segments.push_back(cv::Vec4i(pixels[2].x, pixels[2].y, pixels[6].x, pixels[6].y));
+    //    if (addedSide[3] || addedSide[0])
+    //        segments.push_back(cv::Vec4i(pixels[3].x, pixels[3].y, pixels[7].x, pixels[7].y));
     return segments;
 }
