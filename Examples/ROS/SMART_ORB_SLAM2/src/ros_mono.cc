@@ -107,11 +107,11 @@ int main(int argc, char **argv)
 {
     XInitThreads();
 
-    boxVertices3d = cv::Mat::zeros(3, 8, CV_64FC1);
+    boxVertices3d = cv::Mat::zeros(3, 8, CV_32FC1);
     for(size_t iPoint(0); iPoint < 8; ++iPoint)
     {
         for(size_t iDim(0); iDim < 3; ++iDim)
-            boxVertices3d.at<double>(iDim, iPoint) = boxVerticesData[3*iPoint + iDim];
+            boxVertices3d.at<float>(iDim, iPoint) = boxVerticesData[3*iPoint + iDim];
     }
 
     std::string intrinsicsXmlFile = "./Data/calib/LogitechPro9000.xml";
@@ -166,6 +166,11 @@ int main(int argc, char **argv)
     return 0;
 }
 
+void ShowMat(const cv::Mat & mat, const std::string name)
+{
+  std::cout << name << " : rows = "<<mat.rows << " ; cols = " << mat.cols << " ; type = " << mat.type() <<std::endl;
+}
+
 void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
 {
     // Copy the ros image message to cv::Mat.
@@ -205,20 +210,26 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
         points3d[3].z += 0.1;
         vector<cv::Point2f> pixels;
         cv::projectPoints(points3d, expMapw2c, tw2c, cv::Mat(K), cv::Mat::zeros(cv::Size(1,4), CV_32F), pixels);
-        cv::circle(frameToShow, pixels[0], 5, cv::Scalar(255,255,255), -2);
-        cv::circle(frameToShow, pixels[1], 9, cv::Scalar(255,0,0), -2);
+        cv::circle(frameToShow, pixels[0], 7, cv::Scalar(255,255,255), -2);
+        cv::circle(frameToShow, pixels[1], 5, cv::Scalar(255,0,0), -2);
         cv::circle(frameToShow, pixels[2], 5, cv::Scalar(0,255,0), -2);
         cv::circle(frameToShow, pixels[3], 5, cv::Scalar(0,0,255), -2);
 
-        // draw box on image
+	cv::line(frameToShow, cv::Point((int)pixels[0].x, (int)pixels[0].y), cv::Point((int)pixels[1].x, (int)pixels[1].y), cv::Scalar(255,255,255),2);
+	cv::line(frameToShow, cv::Point((int)pixels[0].x, (int)pixels[0].y), cv::Point((int)pixels[2].x, (int)pixels[2].y), cv::Scalar(255,255,255),2);
+	cv::line(frameToShow, cv::Point((int)pixels[0].x, (int)pixels[0].y), cv::Point((int)pixels[3].x, (int)pixels[3].y), cv::Scalar(255,255,255),2);
+
+
+	// draw box on image
         if(std::isfinite(poseObjectToWorld[0]) && cv::norm(poseObjectToWorld) < 1e3)
         {
-            cv::Mat rotObj2WorldExp(cv::Size(1,3),CV_64F);
-            rotObj2WorldExp.at<double>(0,0) = poseObjectToWorld[0]; rotObj2WorldExp.at<double>(1,0) = poseObjectToWorld[1]; rotObj2WorldExp.at<double>(2,0) = poseObjectToWorld[2];
+            cv::Mat rotObj2WorldExp(cv::Size(1,3),CV_32F);
+            rotObj2WorldExp.at<float>(0,0) = poseObjectToWorld[0]; rotObj2WorldExp.at<float>(1,0) = poseObjectToWorld[1]; rotObj2WorldExp.at<float>(2,0) = poseObjectToWorld[2];
             cv::Mat rotObj2World;
             cv::Rodrigues(rotObj2WorldExp, rotObj2World);
-            cv::Mat tObj2World(cv::Size(1,3),CV_64F);
-            tObj2World.at<double>(0,0) = poseObjectToWorld[3]; tObj2World.at<double>(1,0) = poseObjectToWorld[4]; tObj2World.at<double>(2,0) = poseObjectToWorld[5];
+            cv::Mat tObj2World(cv::Size(1,3),CV_32F);
+            tObj2World.at<float>(0,0) = poseObjectToWorld[3]; tObj2World.at<float>(1,0) = poseObjectToWorld[4]; tObj2World.at<float>(2,0) = poseObjectToWorld[5];
+    
 
             //            cv::Point3f tObj2World(poseObjectToWorld[3],poseObjectToWorld[4], poseObjectToWorld[5]);
             //            std::vector<cv::Point3f> boxVertices3dInWorld;
@@ -237,9 +248,9 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
             std::vector<cv::Point3f> boxVertices3dInWorld(nPoints);
             for(size_t iPoint(0); iPoint < (size_t)nPoints;++iPoint)
             {
-                boxVertices3dInWorld[iPoint].x = (float)pp3dInWorld.at<double>(0, iPoint);
-                boxVertices3dInWorld[iPoint].y = (float)pp3dInWorld.at<double>(1, iPoint);
-                boxVertices3dInWorld[iPoint].z = (float)pp3dInWorld.at<double>(2, iPoint);
+                boxVertices3dInWorld[iPoint].x = pp3dInWorld.at<float>(0, iPoint);
+                boxVertices3dInWorld[iPoint].y = pp3dInWorld.at<float>(1, iPoint);
+                boxVertices3dInWorld[iPoint].z = pp3dInWorld.at<float>(2, iPoint);
             }
 
             std::vector <cv::Vec4i> boxSegments = GetVisibleSegmentsOfParallelepiped(boxVertices3dInWorld, expMapw2c, tw2c, K);

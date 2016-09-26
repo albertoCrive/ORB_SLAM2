@@ -423,4 +423,23 @@ void System::SaveTrajectoryKITTI(const string &filename)
     cout << endl << "trajectory saved!" << endl;
 }
 
+void System::SaveMap(const string &filename)
+ {
+    std::vector<MapPoint*> mapPoints = mpMap->GetAllMapPoints();
+    cv::Mat GetWorldPos();
+
+    ofstream benchmark_f;
+    cout << " saving map to file : "<<filename<<endl;
+    benchmark_f.open(filename.c_str());
+    if(!benchmark_f)
+        throw std::runtime_error("could not open file for saving 3D map : " + filename);
+
+    for (auto point : mapPoints)
+    {
+      benchmark_f << point->GetWorldPos() << endl<<endl;
+    }
+    benchmark_f.close();
+    cout << " saving completed to file : "<<filename<<endl;
+ }
+  
 } //namespace ORB_SLAM
