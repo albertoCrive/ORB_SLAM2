@@ -222,7 +222,7 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
 	cv::Mat currentRot = pose(cv::Range(0,3), cv::Range(0,3));
 	cv::Mat currentTransl = pose(cv::Range(0,3), cv::Range(3,4));
 	cv::Mat currentCameraCenter =-currentRot.inv() * currentTransl;
-	std::cout<< "s =" << absoluteScale  << "; camera center : " << currentCameraCenter.t()<<std::endl;
+	std::cout<< "s =" << scaleObjectToWorld  << "; camera center : " << currentCameraCenter.t()<<std::endl;
 	
 
 
