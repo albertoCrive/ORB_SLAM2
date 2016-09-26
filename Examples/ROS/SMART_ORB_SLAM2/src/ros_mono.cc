@@ -219,6 +219,12 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
 	cv::line(frameToShow, cv::Point((int)pixels[0].x, (int)pixels[0].y), cv::Point((int)pixels[2].x, (int)pixels[2].y), cv::Scalar(255,255,255),2);
 	cv::line(frameToShow, cv::Point((int)pixels[0].x, (int)pixels[0].y), cv::Point((int)pixels[3].x, (int)pixels[3].y), cv::Scalar(255,255,255),2);
 
+	cv::Mat currentRot = pose(cv::Range(0,3), cv::Range(0,3));
+	cv::Mat currentTransl = pose(cv::Range(0,3), cv::Range(3,4));
+	cv::Mat currentCameraCenter =-currentRot.inv() * currentTransl;
+	std::cout<< "s =" << absoluteScale  << "; camera center : " << currentCameraCenter.t()<<std::endl;
+	
+
 
 	// draw box on image
         if(std::isfinite(poseObjectToWorld[0]) && cv::norm(poseObjectToWorld) < 1e3)
