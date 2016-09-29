@@ -41,7 +41,14 @@ using namespace std;
 image_transport::Publisher imagePublisherToPoseEstimator;
 image_transport::Publisher imagePublisherToVisu;
 cv::Vec6f poseObjectToWorld;
+
 double scaleObjectToWorld;
+// bool bScaleManuallySet = false;
+// cv::Mat cameraCenter1;
+// cv::Mat cameraCenter2;
+
+
+
 
 // TODO read this and distortion parameters from file ! ! !
 cv::Matx33f K(0,0,0,0,0,0,0,0,0);
@@ -222,8 +229,14 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
 	cv::Mat currentRot = pose(cv::Range(0,3), cv::Range(0,3));
 	cv::Mat currentTransl = pose(cv::Range(0,3), cv::Range(3,4));
 	cv::Mat currentCameraCenter =-currentRot.inv() * currentTransl;
-	std::cout<< "s =" << scaleObjectToWorld  << "; camera center : " << currentCameraCenter.t()<<std::endl;
+	std::cout<< "s =" << std::setprecision(5) << scaleObjectToWorld  << "; camera center : " << currentCameraCenter.t()<<std::endl;
 	
+	// cout << " press p for saving the first camera center" << std::endl;
+	// char c = cv::waitKey(20);
+	// if(c=='p')
+	//   cameraCenter1 = currentCameraCenter.clone();
+	// else if (c == 'q')
+	//   cameraCenter2 = currentCameraCenter.clone();
 
 
 	// draw box on image
@@ -235,7 +248,7 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
             cv::Rodrigues(rotObj2WorldExp, rotObj2World);
             cv::Mat tObj2World(cv::Size(1,3),CV_32F);
             tObj2World.at<float>(0,0) = poseObjectToWorld[3]; tObj2World.at<float>(1,0) = poseObjectToWorld[4]; tObj2World.at<float>(2,0) = poseObjectToWorld[5];
-    
+   
 
             //            cv::Point3f tObj2World(poseObjectToWorld[3],poseObjectToWorld[4], poseObjectToWorld[5]);
             //            std::vector<cv::Point3f> boxVertices3dInWorld;
