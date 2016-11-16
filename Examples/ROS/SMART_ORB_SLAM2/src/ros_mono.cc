@@ -43,6 +43,8 @@ image_transport::Publisher imagePublisherToVisu;
 cv::Vec6f poseObjectToWorld;
 
 double scaleObjectToWorld;
+int iGrabbedImage = 0; // this is just for visualization 
+ 
 // bool bScaleManuallySet = false;
 // cv::Mat cameraCenter1;
 // cv::Mat cameraCenter2;
@@ -191,6 +193,8 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
         ROS_ERROR("cv_bridge exception: %s", e.what());
         return;
     }
+    iGrabbedImage++;
+    
     cv::Mat pose =  mpSLAM->TrackMonocular(cv_ptr->image,cv_ptr->header.stamp.toSec());
     cv::Mat frameToShow;
     cv::cvtColor(cv_ptr->image, frameToShow, CV_BGR2RGB);
@@ -229,7 +233,12 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
 	cv::Mat currentRot = pose(cv::Range(0,3), cv::Range(0,3));
 	cv::Mat currentTransl = pose(cv::Range(0,3), cv::Range(3,4));
 	cv::Mat currentCameraCenter =-currentRot.inv() * currentTransl;
-	std::cout<< "s =" << std::setprecision(5) << scaleObjectToWorld  << "; camera center : " << currentCameraCenter.t()<<std::endl;
+	if(iGrabbedImage >= 200)
+	  {
+	    std::cout<< "s =" << std::setprecision(5) << scaleObjectToWorld  << "; camera center : " << currentCameraCenter.t()<<std::endl;
+	    iGrabbedImage = 0;
+    
+	  }
 	
 	// cout << " press p for saving the first camera center" << std::endl;
 	// char c = cv::waitKey(20);
@@ -277,6 +286,11 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
             for(size_t iSeg(0); iSeg < boxSegments.size();++iSeg)
                 cv::line(frameToShow, cv::Point(boxSegments[iSeg][0],boxSegments[iSeg][1]), cv::Point(boxSegments[iSeg][2],boxSegments[iSeg][3]), cv::Scalar(0,255,0), thickness);
         }
+	else
+	  {
+            cv::putText(frameToShow, "Retrieving the box position ... ", cv::Point(20,400), cv::FONT_HERSHEY_DUPLEX, 1, cv::Scalar(255,255,0));
+	  }
+	
 
 
 
